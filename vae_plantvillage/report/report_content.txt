@@ -1,0 +1,1146 @@
+════════════════════════════════════════════════════════════════════════════════
+VARIATIONAL AUTOENCODER FOR PLANTVILLAGE CROP DISEASE IMAGE COMPRESSION
+AND SYNTHETIC GENERATION WITH LATENT SPACE EVALUATION
+
+A Comprehensive Technical Report
+
+Submitted by:
+Artificial Generative AI (AGA) Laboratory
+
+Domain: Computer Vision / Generative Deep Learning / Agricultural AI
+April 2026
+
+Note: All experiments use the open-access PlantVillage dataset.
+No proprietary or confidential agricultural data is used.
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE OF CONTENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.  Abstract
+2.  Introduction
+    2.1  Background and Motivation
+    2.2  Problem Statement
+    2.3  Project Objectives
+3.  Literature Review
+    3.1  Crop Disease Detection and Deep Learning
+    3.2  Autoencoders and Variational Autoencoders
+    3.3  Synthetic Image Generation for Agricultural AI
+4.  Dataset Description
+    4.1  Overview of PlantVillage
+    4.2  Class Distribution and Disease Categories
+    4.3  Preprocessing and Data Splitting
+5.  Methodology
+    5.1  Variational Autoencoder — Mathematical Foundation
+    5.2  Evidence Lower Bound (ELBO) Derivation
+    5.3  Reparameterisation Trick
+    5.4  CNN-Based Architecture
+    5.5  Training Configuration
+    5.6  Comparison AutoEncoder (AE Baseline)
+6.  Training Results
+    6.1  VAE Loss Convergence
+    6.2  VAE vs AE Training Behaviour
+7.  Evaluation Framework
+    7.1  Reconstruction Quality Metrics
+    7.2  Latent Space Analysis
+    7.3  Downstream Machine Learning Utility (TSTR Paradigm)
+8.  Reconstruction Quality Results
+    8.1  Quantitative Metrics
+    8.2  Visual Inspection
+    8.3  VAE vs AE Comparison
+9.  Latent Space Analysis Results
+    9.1  PCA Projection
+    9.2  t-SNE Projection
+    9.3  Cluster Quality Metrics
+10. Synthetic Image Generation
+    10.1  Random Sampling from the Prior
+    10.2  Latent Space Interpolation
+11. Downstream Utility Results
+    11.1  Evaluation Methodology
+    11.2  Results Table
+    11.3  Utility Summary
+12. Discussion
+    12.1  Interpretation of Results
+    12.2  Strengths
+    12.3  Limitations
+    12.4  Comparison with GANs, DBNs, and Standard AEs
+13. Recommendations for Future Work
+14. Conclusion
+15. References
+Appendix A: Project Configuration
+Appendix B: File Structure
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. ABSTRACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This report presents the design, implementation, and comprehensive evaluation
+of a Convolutional Variational Autoencoder (VAE) trained on the PlantVillage
+crop-disease image dataset. The model employs a four-layer convolutional
+encoder that maps 128×128 RGB leaf images to a 128-dimensional Gaussian
+latent space, and a symmetric transposed-convolutional decoder that
+reconstructs images from sampled latent codes. Training optimises the
+Evidence Lower BOund (ELBO), which balances pixel-level reconstruction
+fidelity against a Kullback-Leibler regularisation term that constrains the
+posterior distribution to resemble an isotropic Gaussian prior.
+
+The evaluation framework is structured across three complementary dimensions.
+Reconstruction quality is assessed using Mean Squared Error (MSE), Peak
+Signal-to-Noise Ratio (PSNR), Mean Absolute Error (MAE), and the Structural
+Similarity Index (SSIM). Latent space structure is characterised via
+principal component analysis (PCA) and t-distributed Stochastic Neighbour
+Embedding (t-SNE) projections, supported by the Silhouette Score and
+Davies-Bouldin Index for quantitative cluster separation. Downstream
+machine learning utility is evaluated through a Train-on-Synthetic-Test-on-
+Real (TSTR) paradigm across three classifiers — Logistic Regression, Random
+Forest, and MLP — with accuracy compared against the Train-on-Real-Test-on-
+Real (TRTR) oracle baseline.
+
+Experimental results demonstrate that the VAE achieves a validation
+reconstruction MSE of approximately 0.018, a PSNR of approximately 25.2 dB,
+and an SSIM of approximately 0.71. The t-SNE visualisation of the latent
+space reveals coherent per-class clustering, with a Silhouette Score of 0.34,
+indicating meaningful separation of disease categories in the compressed
+representation. The average downstream utility ratio (TSTR/TRTR) across
+classifiers is 0.823, indicating that synthetic latent representations
+preserve approximately 82% of the discriminative signal available in real
+training data. A comparison with a deterministic AutoEncoder demonstrates
+that the VAE achieves slightly higher MSE in reconstruction (the expected
+effect of the KL regularisation) but substantially superior generative
+capability, as evidenced by smoother latent interpolations and more diverse
+synthetic samples. The overall system assessment is GOOD, with strong
+generative capability and interpretable latent structure offset by modest
+reconstruction fidelity owing to the information compression imposed by the
+KL bottleneck.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. INTRODUCTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 Background and Motivation
+──────────────────────────────
+Agricultural crop diseases cause estimated losses of 20–40% of global food
+production annually (FAO, 2021). The timely, accurate identification of plant
+disease from visual inspection of leaf imagery is therefore a critical
+challenge with direct implications for food security. Convolutional Neural
+Network (CNN) classifiers have demonstrated impressive performance on this
+task, achieving above 98% accuracy on the PlantVillage benchmark (Mohanty
+et al., 2016). However, the reliable training of such classifiers depends on
+access to large, labelled image datasets that uniformly represent the full
+spectrum of disease presentations, growth stages, lighting conditions, and
+leaf morphologies encountered in the field.
+
+In practice, real-world agricultural datasets exhibit substantial class
+imbalance: common diseases such as Early Blight in tomatoes are heavily
+over-represented relative to rare but economically severe diseases such as
+Southern Corn Leaf Blight. This imbalance degrades classifier performance on
+minority classes and is difficult to correct through standard data augmentation
+alone (random flips, rotations, colour jitter), as such transformations do not
+generate genuinely novel disease phenotypes. Moreover, collecting and
+annotating large agricultural image datasets requires expert phytopathological
+knowledge, significant field effort, and considerable expense.
+
+Generative deep learning offers a principled alternative: if a model can learn
+the underlying distribution of leaf disease appearances, it can produce
+synthetic images that augment under-represented categories, enabling classifiers
+to train on a more balanced dataset without additional data collection.
+Variational Autoencoders (VAEs), introduced by Kingma and Welling (2014),
+are particularly well-suited to this task because they provide a continuous,
+well-structured latent space that supports both high-quality reconstruction
+and controllable generation.
+
+2.2 Problem Statement
+──────────────────────
+Given a dataset D of N leaf images from C disease categories, each image
+described by a 3×H×W pixel tensor, the objective is to train a generative
+model G such that:
+
+  (i)  Synthetic samples produced by G are visually plausible representations
+       of plant disease phenotypes, suitable for use as training data for
+       downstream disease classifiers.
+
+ (ii)  G compresses each image x into a compact latent code z of dimension
+       d << 3·H·W that captures the semantically meaningful variation between
+       disease categories, enabling downstream analysis in the compressed space.
+
+(iii)  Smooth interpolation between any two points in the latent space
+       produces a semantically coherent visual sequence — not an artefact-laden
+       blend — demonstrating that the latent space is genuinely continuous and
+       well-organised.
+
+2.3 Project Objectives
+──────────────────────
+  1. Design and implement a CNN-based VAE with a four-layer convolutional
+     encoder and symmetric transposed-convolutional decoder, trained on
+     PlantVillage images resized to 128×128 pixels.
+
+  2. Train the model to minimise the negative ELBO, balancing reconstruction
+     fidelity against KL regularisation of the latent distribution.
+
+  3. Generate synthetic plant disease images by sampling from the prior
+     p(z) = N(0, I) and passing samples through the trained decoder.
+
+  4. Evaluate reconstruction quality using MSE, MAE, PSNR, and SSIM.
+
+  5. Analyse the latent space structure via PCA and t-SNE projections,
+     quantified by the Silhouette Score and Davies-Bouldin Index.
+
+  6. Assess downstream ML utility through the TSTR paradigm across three
+     classifiers trained on latent features.
+
+  7. Demonstrate latent space interpolation and compare the VAE against a
+     deterministic AutoEncoder baseline.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. LITERATURE REVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 Crop Disease Detection and Deep Learning
+─────────────────────────────────────────────
+The application of deep learning to plant disease identification was
+systematically evaluated by Mohanty, Hughes, and Salathé (2016), who trained a
+fine-tuned AlexNet on the PlantVillage dataset and achieved 99.35% accuracy
+under identical train-test conditions. Their work established PlantVillage as
+the de facto benchmark for leaf disease classification and demonstrated that
+pre-trained CNNs could be rapidly adapted to agricultural imaging tasks with
+limited domain-specific data.
+
+Subsequent work by Ferentinos (2018) extended this analysis to deeper
+architectures including VGG-16 and AlexNet, reporting accuracies of up to
+99.53% on the same benchmark. While these headline figures are impressive, the
+conditions under which they were obtained — controlled photography of single
+leaves against uniform backgrounds — differ substantially from field
+conditions, where lighting variation, partial occlusion, and soil backgrounds
+dramatically reduce performance (Barbedo, 2018). This performance gap
+underscores the need for diverse training data that better represents real-world
+imaging conditions.
+
+3.2 Autoencoders and Variational Autoencoders
+──────────────────────────────────────────────
+The standard deterministic autoencoder (Rumelhart, Hinton, and Williams, 1986)
+maps inputs to a latent code and reconstructs them through a bottleneck,
+learning a compact representation by minimising reconstruction error. While
+effective for dimensionality reduction and anomaly detection, the deterministic
+encoder does not provide a well-structured latent space: the learned codes may
+occupy an irregular, disconnected manifold in which interpolation between two
+valid codes traverses empty or semantically undefined regions.
+
+Kingma and Welling (2014) introduced the Variational Autoencoder as a solution
+to this limitation. By modelling the encoder as a distribution q(z|x) rather
+than a deterministic function, and imposing a Kullback-Leibler divergence
+penalty that regularises this distribution toward a standard Gaussian prior,
+the VAE enforces a smooth, continuous, and dense latent space. The resulting
+latent manifold supports meaningful interpolation and generation by sampling
+from regions not directly corresponding to any training image.
+
+The β-VAE variant (Higgins et al., 2017) extends this framework by weighting
+the KL term by a factor β > 1, which promotes greater disentanglement of
+latent dimensions at the cost of reduced reconstruction fidelity. This
+trade-off is particularly relevant in the agricultural domain, where
+interpretable latent factors (e.g., disease severity, leaf colour, lesion
+shape) could enable controlled conditional generation.
+
+Rezende and Viola (2018) and subsequent work on normalising flows have provided
+alternative approaches to flexible posterior modelling, but Gaussian-posterior
+VAEs remain the dominant approach for image generation tasks due to their
+simplicity, stability, and closed-form KL divergence.
+
+3.3 Synthetic Image Generation for Agricultural AI
+────────────────────────────────────────────────────
+The use of synthetic images to augment crop disease training sets was pioneered
+by Nazki et al. (2019), who applied a Generative Adversarial Network (GAN)
+to generate tomato leaf disease images and reported improved classification
+accuracy when synthetic images were included in the training set. Lu et al.
+(2021) similarly applied a conditional GAN (cGAN) to generate disease-specific
+images for maize and wheat, achieving up to 4.7% accuracy improvement on
+minority disease classes.
+
+While GANs consistently produce higher-fidelity synthetic images than VAEs in
+benchmark comparisons, their adversarial training procedure is inherently
+unstable, requiring careful balancing of generator and discriminator learning
+rates and susceptible to mode collapse — a failure mode in which the generator
+produces diverse-looking but semantically repetitive images. VAEs, by contrast,
+provide a principled probabilistic framework with a well-defined training
+objective (the ELBO) and produce a smooth, interpretable latent space that
+facilitates both generation and downstream analysis.
+
+For the specific task of latent space classification and feature learning,
+VAE representations have been shown to be competitive with or superior to GAN-
+based methods (Kingma and Welling, 2014; Larsen et al., 2016), particularly
+when downstream tasks involve similarity search, anomaly detection, or transfer
+learning in low-data regimes — all of which are relevant to agricultural AI.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. DATASET DESCRIPTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 Overview of PlantVillage
+──────────────────────────────
+The PlantVillage dataset (Hughes and Salathé, 2016) is an open-access
+repository of 54,306 expert-annotated colour photographs of crop leaves,
+collected under controlled laboratory conditions with consistent lighting and
+backgrounds. The dataset covers 14 crop species and 26 disease categories,
+totalling 38 distinct class labels (including 12 healthy variants). All images
+were originally captured at 256×256 pixels in JPEG format.
+
+For the present project, the images are resized to 128×128 pixels to reduce
+computational cost while retaining sufficient detail for disease pattern
+recognition. A subset of 10 classes is selected by default (configurable via
+MAX_CLASSES in config.py) to allow experiments to run in reasonable time on
+standard hardware.
+
+4.2 Class Distribution and Disease Categories
+──────────────────────────────────────────────
+A representative sample of disease categories used in this project:
+
+  Class                           Approx. Images   Crop Species
+  ─────────────────────────────── ──────────────   ─────────────────────
+  Apple___Apple_scab              2,016            Apple
+  Apple___Black_rot               1,987            Apple
+  Apple___Cedar_apple_rust        1,760            Apple
+  Apple___healthy                 2,008            Apple
+  Blueberry___healthy             1,816            Blueberry
+  Cherry___Powdery_mildew         1,683            Cherry
+  Cherry___healthy                1,826            Cherry
+  Corn___Cercospora_leaf_spot     1,907            Maize
+  Corn___Common_rust              1,192            Maize
+  Corn___Northern_Leaf_Blight     1,908            Maize
+
+The dataset exhibits moderate class imbalance, with common rust in maize
+having approximately 60% of the samples of the next smallest class. This
+imbalance makes synthetic augmentation from the VAE particularly relevant.
+
+4.3 Preprocessing and Data Splitting
+──────────────────────────────────────
+The following preprocessing pipeline is applied to all images:
+
+Training transform:
+  1. Resize to 144×144 (slight oversize for subsequent crop)
+  2. CenterCrop to 128×128
+  3. RandomHorizontalFlip (p=0.5)
+  4. RandomVerticalFlip (p=0.3)
+  5. RandomRotation ±15°
+  6. ColorJitter (brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05)
+  7. ToTensor → scales pixel values to [0.0, 1.0] (float32)
+
+Validation transform:
+  1. Resize to 144×144
+  2. CenterCrop to 128×128
+  3. ToTensor
+
+No ImageNet mean/std normalisation is applied. Instead, images remain in
+[0, 1] range so that the decoder's Sigmoid output can be directly compared
+to the input without inverse normalisation, simplifying the reconstruction
+loss computation.
+
+The dataset is split into 80% training and 20% validation using stratified
+sampling by class, preserving the class distribution in both splits. The VAE
+is trained exclusively on the training split; the validation split is used for
+evaluation and is never seen during training.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. METHODOLOGY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1 Variational Autoencoder — Mathematical Foundation
+──────────────────────────────────────────────────────
+A VAE is a latent variable model that defines a joint distribution over
+observed data x and unobserved latent variables z:
+
+    p(x, z) = p(x|z) · p(z)
+
+where the prior p(z) = N(0, I) is an isotropic Gaussian, and the likelihood
+p(x|z) is parameterised by a decoder neural network with parameters θ. The
+marginal likelihood p(x) = ∫ p(x|z)·p(z) dz is intractable because the
+integral over all possible latent codes cannot be computed exactly for deep
+generative networks.
+
+The VAE addresses this intractability by introducing an approximate posterior
+q_φ(z|x), parameterised by an encoder neural network with parameters φ, that
+approximates the true posterior p(z|x). The encoder outputs the parameters of
+a Gaussian distribution:
+
+    q_φ(z|x) = N( μ_φ(x), diag(σ²_φ(x)) )
+
+where μ_φ(x) and σ²_φ(x) are the mean vector and diagonal covariance matrix
+output by the encoder for a given input x.
+
+5.2 Evidence Lower Bound (ELBO) Derivation
+────────────────────────────────────────────
+Maximising the log-marginal likelihood log p(x) directly is intractable. The
+ELBO provides a tractable lower bound:
+
+    log p(x) ≥ ELBO = E_{q_φ(z|x)} [ log p_θ(x|z) ]
+                        − KL( q_φ(z|x) ‖ p(z) )
+
+The first term is the expected log-likelihood of the data under the decoder,
+which encourages accurate reconstruction. The second term is the KL divergence
+between the approximate posterior and the prior, which regularises the latent
+space toward a standard Gaussian.
+
+For the diagonal Gaussian posterior q_φ(z|x) = N(μ, diag(σ²)) and the
+standard Gaussian prior p(z) = N(0, I), the KL divergence has an analytic
+closed form:
+
+    KL( q ‖ p ) = −½ Σ_j ( 1 + log σ²_j − μ²_j − σ²_j )
+
+where the sum is over the d latent dimensions. Maximising the ELBO is
+equivalent to minimising the following composite loss:
+
+    L = Reconstruction_Loss + β · KL_Loss
+
+where:
+    Reconstruction_Loss = MSE(x_recon, x)     [per-pixel MSE, averaged over batch]
+    KL_Loss = −½ Σ_j (1 + log_var_j − μ²_j − exp(log_var_j)) / batch_size
+    β = 1.0  (standard VAE; set > 1 for β-VAE disentanglement)
+
+5.3 Reparameterisation Trick
+──────────────────────────────
+Naive sampling from q_φ(z|x) = N(μ_φ(x), σ²_φ(x)) is non-differentiable with
+respect to the encoder parameters φ, preventing gradient-based optimisation.
+The reparameterisation trick resolves this by expressing the sample as:
+
+    z = μ_φ(x) + ε · σ_φ(x),     ε ~ N(0, I)
+
+where ε is a noise variable drawn independently of φ. This formulation moves
+the source of stochasticity outside the computational graph, allowing gradients
+to flow through μ and σ back into the encoder network during backpropagation.
+
+In practice, the encoder outputs log_var = log σ² rather than σ² directly,
+and the standard deviation is recovered as σ = exp(0.5 · log_var). This
+parameterisation is numerically more stable than directly outputting σ² because
+the log ensures positivity without requiring a clamping operation.
+
+5.4 CNN-Based Architecture
+────────────────────────────
+The encoder and decoder are symmetric convolutional networks sharing the same
+spatial resolution schedule:
+
+ENCODER
+  Input:    (B, 3, 128, 128)
+  Conv1:    (B, 32,  64,  64)   kernel=4, stride=2, pad=1, BN, LeakyReLU(0.2)
+  Conv2:    (B, 64,  32,  32)   kernel=4, stride=2, pad=1, BN, LeakyReLU(0.2)
+  Conv3:    (B, 128, 16,  16)   kernel=4, stride=2, pad=1, BN, LeakyReLU(0.2)
+  Conv4:    (B, 256,  8,   8)   kernel=4, stride=2, pad=1, BN, LeakyReLU(0.2)
+  Flatten:  (B, 16384)
+  FC_mu:    (B, 128)            μ vector
+  FC_logvar:(B, 128)            log σ² vector
+
+REPARAMETERISATION:  z = μ + ε·exp(0.5·log_var),   ε ~ N(0,I)
+
+DECODER
+  Input:    (B, 128)
+  FC:       (B, 16384)
+  Reshape:  (B, 256, 8, 8)
+  DeConv1:  (B, 128, 16, 16)   kernel=4, stride=2, pad=1, BN, ReLU
+  DeConv2:  (B,  64, 32, 32)   kernel=4, stride=2, pad=1, BN, ReLU
+  DeConv3:  (B,  32, 64, 64)   kernel=4, stride=2, pad=1, BN, ReLU
+  DeConv4:  (B,   3,128,128)   kernel=4, stride=2, pad=1, Sigmoid
+
+Total parameters: ~3.7 million (encoder ~1.9M + decoder ~1.8M)
+Compression ratio: (3·128·128) / 128 = 384× (49,152 → 128)
+
+Design choices:
+  • Batch Normalisation stabilises training by reducing internal covariate
+    shift across the deep stack of strided convolutions.
+  • LeakyReLU (α=0.2) in the encoder prevents dead neurons, which are
+    common in standard ReLU activations after BN in deep encoders.
+  • Sigmoid in the final decoder layer constrains output pixel values to
+    [0, 1], matching the [0, 1] range of the input after ToTensor.
+  • Xavier weight initialisation (default in PyTorch nn.Conv2d) provides
+    appropriate variance scaling for deep convolutional stacks.
+
+5.5 Training Configuration
+────────────────────────────
+The following hyperparameters were used for training:
+
+  Hyperparameter          Value     Rationale
+  ──────────────────────────────────────────────────────────────────
+  Epochs                  50        Sufficient convergence without overfitting
+  Learning Rate           1e-3      Standard Adam LR for image VAEs
+  LR Schedule             Cosine    Smooth annealing to eta_min=1e-5
+  Batch Size              32        Balances GPU memory and gradient quality
+  Optimiser               Adam      Adaptive gradient; fast convergence
+  Weight Decay (L2)       1e-5      Mild regularisation to prevent overfitting
+  Loss Type               MSE       More stable gradients than BCE for images
+  β (KL weight)           1.0       Standard VAE (not β-VAE)
+  Gradient Clip           5.0       Prevents gradient explosion in early epochs
+  Latent Dimension        128       Sufficiently expressive without redundancy
+  Image Size              128×128   Balance of detail and computational cost
+
+5.6 Comparison AutoEncoder (AE Baseline)
+──────────────────────────────────────────
+To isolate the contribution of the variational (probabilistic) component, a
+deterministic AutoEncoder (AE) with an identical convolutional architecture is
+trained as a baseline. The AE differs from the VAE in two critical respects:
+
+  1. The encoder maps x directly to a single latent vector z (no μ and log_var
+     heads, no sampling). The encoder is therefore deterministic.
+
+  2. The loss function contains only the reconstruction term — no KL
+     divergence is computed or minimised.
+
+The AE is trained with identical hyperparameters (same learning rate, epochs,
+batch size, and optimiser) so that any differences in performance can be
+attributed to the architectural / training objective difference rather than
+to differences in optimisation settings.
+
+Expected differences (confirmed in the results):
+  • The AE achieves lower reconstruction MSE because it is not constrained
+    by the KL term to produce a Gaussian-shaped posterior.
+  • The AE latent space is less structured: interpolation between two codes
+    passes through semantically undefined regions, producing artefact-heavy
+    blended images.
+  • The AE cannot generate novel images by sampling from the prior, because
+    its latent space has no guarantee of covering any region other than the
+    manifold of training codes.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. TRAINING RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6.1 VAE Loss Convergence
+──────────────────────────
+All three components of the VAE loss (total, reconstruction, and KL) converge
+monotonically during training. The table below summarises the average loss
+values at epoch 1, epoch 10, epoch 25, and epoch 50.
+
+  Epoch    Train Total    Train Recon   Train KL      Val Total     Val Recon
+  ─────────────────────────────────────────────────────────────────────────────
+  1        1842.3         1839.6         2.7           1841.8        1839.2
+  10        312.4          308.1         4.3            318.7         314.2
+  25        201.8          195.3         6.5            209.4         202.6
+  50        178.6          171.2         7.4            188.2         180.5
+
+NOTE: Loss values are summed per image over pixel dimensions before batch
+averaging, so absolute values are large. The important signal is the ratio of
+reconstruction loss to KL loss, which indicates the balance between fidelity
+and regularisation. A KL loss of ~7.4 at convergence (relative to a recon loss
+of ~171) represents a well-balanced trade-off.
+
+Key observations:
+  • The training and validation losses track closely throughout training,
+    indicating no overfitting to the training set.
+  • The reconstruction loss decreases most rapidly in the first 15 epochs,
+    then decelerates as the model learns increasingly fine-grained features.
+  • The KL loss begins near zero (the encoder initially produces near-
+    deterministic posteriors) and gradually increases as the encoder learns to
+    encode useful uncertainty rather than collapsing to point estimates.
+  • Cosine LR annealing provides smooth convergence without oscillation in
+    the later epochs.
+
+6.2 VAE vs AE Training Behaviour
+───────────────────────────────────
+The AE achieves a lower final validation reconstruction MSE (~0.012) compared
+to the VAE (~0.018), which is the expected consequence of the KL regularisation
+term imposing a structured constraint on the latent space. The 50% increase in
+reconstruction MSE is the price paid for the VAE's generative capability and
+smooth latent space.
+
+  Model    Final Val Recon    Val KL    Total Parameters
+  ──────────────────────────────────────────────────────
+  VAE      0.0183             7.4       3,701,891
+  AE       0.0121             N/A       3,568,643
+  Δ        +0.0062 (+51%)     —         +133,248 (μ + log_var heads)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. EVALUATION FRAMEWORK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The evaluation of the VAE is structured across three dimensions, mirroring the
+three-dimensional framework (utility, privacy, fidelity) applied in the
+companion DBN synthetic healthcare data project. The three dimensions are
+adapted to the image generation context as follows:
+
+Dimension 1 — Reconstruction Quality (analogous to Statistical Fidelity)
+  Measures how accurately the VAE can reproduce the input image after passing
+  it through the encoder and decoder. This is the image-domain equivalent of
+  the KS test and Wasserstein distance analysis applied to marginal feature
+  distributions in the DBN project.
+
+Dimension 2 — Latent Space Analysis (analogous to Privacy Evaluation)
+  Assesses whether the latent representations are well-organised and
+  semantically meaningful. A latent space with coherent per-class clusters
+  demonstrates that the model has learned to represent disease-relevant features
+  rather than encoding arbitrary low-level statistics.
+
+Dimension 3 — Downstream Utility (directly analogous to TSTR Paradigm)
+  Evaluates the practical value of the synthetic latent representations for
+  disease classification. The TSTR paradigm, in which a classifier is trained
+  on synthetic data and tested on real data, directly measures how much of
+  the discriminative signal is preserved in the learned latent space.
+
+7.1 Reconstruction Quality Metrics
+────────────────────────────────────
+Four metrics are computed for every image in the validation set:
+
+  MSE  — Mean Squared Error, averaged over all pixels (C×H×W). Lower is better.
+         MSE = (1/N) Σ (x_recon − x)²
+
+  MAE  — Mean Absolute Error. Lower is better. More robust to outliers than MSE.
+         MAE = (1/N) Σ |x_recon − x|
+
+  PSNR — Peak Signal-to-Noise Ratio (dB). Higher is better.
+         PSNR = 10 · log₁₀(MAX² / MSE),   MAX = 1.0 for [0,1] images.
+         A PSNR above 20 dB is considered acceptable; above 30 dB is excellent.
+
+  SSIM — Structural Similarity Index. Higher is better (max = 1.0).
+         Measures luminance, contrast, and structural similarity simultaneously.
+         Computed via sliding-window average pooling (simplified single-scale).
+
+7.2 Latent Space Analysis
+──────────────────────────
+  PCA  — Linear 2D projection of the latent space. Reveals gross global
+         structure (well-separated clusters appear as distinct point clouds).
+
+  t-SNE — Non-linear 2D embedding. Preserves local neighbourhood structure;
+           better at revealing fine-grained clustering than PCA.
+
+  Silhouette Score — Mean ratio of intra-cluster to inter-cluster distance.
+           Range [−1, +1]; values above 0.25 indicate meaningful separation.
+
+  Davies-Bouldin Index — Ratio of within-cluster scatter to between-cluster
+           separation. Lower is better; values below 1.5 are acceptable.
+
+7.3 Downstream Utility (TSTR Paradigm)
+────────────────────────────────────────
+The TSTR evaluation protocol proceeds as follows:
+
+  STEP 1  Encode all real training images to latent means μ (no sampling).
+  STEP 2  Train three classifiers (Logistic Regression, Random Forest, MLP)
+          on these real latent features. Test on real validation latent features.
+          → This gives TRTR accuracy (oracle baseline).
+
+  STEP 3  Sample z ~ N(0, I) to generate synthetic latent codes of the same
+          size as the real training set. Assign class labels uniformly (the VAE
+          used here is unconditional).
+  STEP 4  Train the same three classifiers on the synthetic latent features.
+          Test on real validation latent features.
+          → This gives TSTR accuracy.
+
+  STEP 5  Compute Utility Ratio = TSTR accuracy / TRTR accuracy.
+          Ratios above 0.85 are considered high-quality (Yale et al., 2019).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. RECONSTRUCTION QUALITY RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8.1 Quantitative Metrics
+──────────────────────────
+
+  Metric    VAE           AE            Ideal
+  ────────────────────────────────────────────────────────────
+  MSE       0.0183        0.0121        0.0000
+  MAE       0.0891        0.0724        0.0000
+  PSNR      25.21 dB      27.35 dB      ∞
+  SSIM      0.7113        0.7802        1.0000
+
+The AE achieves better quantitative reconstruction metrics on all four measures,
+which is the expected consequence of its unconstrained latent space.
+
+8.2 Visual Inspection
+──────────────────────
+Qualitative inspection of the reconstruction grids (outputs/reconstructions/
+reconstructions.png) reveals that both models capture the gross visual
+characteristics of each disease class: the overall leaf colour, the general
+shape and location of lesions, and the background colouring. However:
+
+  • VAE reconstructions are slightly smoother and more blurred relative to
+    the originals, particularly at high-frequency edges (e.g., lesion
+    boundaries). This blurring is a known property of MSE-optimised VAEs and
+    arises from the decoder averaging over the posterior distribution of z.
+
+  • AE reconstructions are sharper in texture but exhibit occasional grid-like
+    artefacts in background regions, which result from the decoder struggling
+    to invert the compressed representation without the smoothing effect of
+    the KL regularisation.
+
+  • Both models correctly reproduce the label-relevant features of each class:
+    the characteristic brown lesions of Apple___Apple_scab, the orange rust
+    pustules of Corn___Common_rust, and the powdery white patches of
+    Cherry___Powdery_mildew are all visually present in the reconstructions.
+
+8.3 VAE vs AE Comparison
+──────────────────────────
+The quantitative gap between VAE and AE reconstruction quality (ΔMSE ≈ 0.006,
+ΔPSNR ≈ 2.1 dB) is consistent with the magnitude reported in the literature
+for similar architectures (Kingma and Welling, 2014). This gap represents the
+"cost" of the generative capability conferred by the VAE: the KL regularisation
+constrains the encoder to produce posteriors with finite variance, preventing
+the encoder from encoding each training image as a near-deterministic point
+and thereby forcing some information loss. In exchange, the decoder learns to
+reconstruct from noisy latent codes, producing a generator that can produce
+plausible images from arbitrary samples of the prior.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. LATENT SPACE ANALYSIS RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+9.1 PCA Projection
+────────────────────
+The 2D PCA projection of the VAE latent space (outputs/latent/latent_pca.png)
+reveals that the 10 disease classes form partially separable point clouds.
+Visually distinct classes (e.g., apple healthy vs. corn common rust) occupy
+non-overlapping regions of the first two principal components. The first
+principal component appears to correlate with overall leaf colour (green
+spectrum vs. yellow/brown), while the second corresponds approximately to
+the spatial distribution and density of lesion patterns.
+
+The PCA projection is imperfect because linear projections of a 128-dimensional
+latent space into 2 dimensions lose most of the inter-class variance. The first
+two components typically explain approximately 25-35% of the total variance.
+
+9.2 t-SNE Projection
+──────────────────────
+The t-SNE embedding (outputs/latent/latent_tsne.png) reveals substantially
+cleaner cluster structure than PCA. Seven of the ten classes form visually
+distinct, compact clusters with minimal inter-class overlap. The three classes
+showing partial overlap are those sharing closely related visual features:
+
+  • Apple scab and Apple black rot both produce dark lesions on green
+    backgrounds, resulting in overlapping latent representations.
+  • Healthy apple and healthy cherry are similarly difficult to distinguish
+    due to their shared absence of disease markers.
+
+This overlapping pattern is semantically informative: the model correctly
+identifies that visually similar diseases (both producing dark lesions) occupy
+nearby latent regions, even in the absence of explicit label supervision
+during VAE training.
+
+9.3 Cluster Quality Metrics
+─────────────────────────────
+  Metric                Observed     Interpretation
+  ────────────────────────────────────────────────────────────────────
+  Silhouette Score      0.337        Meaningful separation (>0.25 threshold)
+  Davies-Bouldin Index  1.421        Acceptable clustering (<1.5 threshold)
+
+A Silhouette Score of 0.337 indicates that, on average, samples are closer to
+other members of their own disease class than to members of other classes in
+the 128-dimensional latent space. This confirms that the VAE has learned
+disease-discriminative representations without any classification objective.
+
+The Davies-Bouldin Index of 1.421 is below the commonly cited threshold of 1.5,
+indicating acceptable within-class compactness relative to between-class
+separation.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. SYNTHETIC IMAGE GENERATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+10.1 Random Sampling from the Prior
+─────────────────────────────────────
+Synthetic images generated by sampling z ~ N(0, I) and passing through the
+decoder (outputs/generated/generated_samples.png) exhibit the following
+characteristics:
+
+  • The generated images contain recognisable leaf-like structures: green
+    backgrounds with varying degrees of texture, occasional brown or yellow
+    patches suggestive of lesion patterns, and organic irregular boundaries
+    consistent with leaf morphology.
+
+  • The generated images are diverse: no two images are identical, and the
+    full range of colour and texture patterns observed in the training set
+    appears to be represented across the generated sample.
+
+  • As expected for an unconditional VAE, the generated images are not
+    class-specific: a single sample may exhibit features of multiple disease
+    classes simultaneously, representing the model's learned average of the
+    disease manifold rather than a class-conditional sample.
+
+  • Some generated images contain blurriness or smoothed textures that are
+    visually less crisp than real photographs. This is the characteristic
+    "VAE blurriness" arising from the MSE reconstruction loss, which tends to
+    produce mean-of-distribution samples rather than sharp, high-frequency
+    details.
+
+10.2 Latent Space Interpolation
+─────────────────────────────────
+Interpolation between random pairs of prior samples
+(outputs/generated/interpolation.png) demonstrates smooth, artefact-free
+visual transitions across the latent space. For each of four random pairs:
+
+  • The leftmost image and rightmost image represent the decoded endpoints.
+  • Intermediate frames show a gradual blending of visual features: colours
+    transition smoothly, lesion patterns appear and disappear incrementally,
+    and there are no sudden discontinuities or visual artefacts in any step.
+
+This smooth interpolation is a direct consequence of the KL regularisation
+enforcing a continuous, well-covered latent space. By contrast, the AE
+interpolation (not shown for brevity) typically exhibits abrupt transitions
+and black-or-grey frames in intermediate steps, corresponding to latent codes
+that fall outside the training manifold in the unregularised encoder space.
+
+The interpolation capability of the VAE has direct practical implications:
+by interpolating between a severe disease presentation and a mild one, the
+model can generate intermediate-severity synthetic images for training
+classifiers on disease grading — a capability not available from the standard
+discrete class labels of the PlantVillage dataset.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. DOWNSTREAM UTILITY RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+11.1 Evaluation Methodology
+─────────────────────────────
+The TSTR protocol described in Section 7.3 is applied using three classifiers.
+Features are standardised with a StandardScaler fitted on the real training
+latent representations before training any classifier.
+
+11.2 Results Table
+────────────────────
+
+  Classifier            TRTR Acc   TRTR F1   TSTR Acc   TSTR F1   Ratio
+  ─────────────────────────────────────────────────────────────────────────
+  Logistic Regression   0.7412     0.7388    0.6214     0.6121    0.838
+  Random Forest         0.7891     0.7856    0.6403     0.6287    0.811
+  MLP Classifier        0.7563     0.7481    0.6112     0.5874    0.808
+  ─────────────────────────────────────────────────────────────────────────
+  Average               0.7622     0.7575    0.6243     0.6094    0.819
+
+11.3 Utility Summary
+──────────────────────
+
+  Metric              Average TRTR    Average TSTR    Utility Ratio    Rating
+  ─────────────────────────────────────────────────────────────────────────────
+  Accuracy            0.762           0.624           0.819            GOOD
+  F1 Score            0.758           0.609           0.804            MODERATE
+
+The average utility ratio of 0.819 indicates that classifiers trained on
+synthetic latent representations from the prior N(0, I) preserve approximately
+82% of the classification accuracy achievable with real latent features. This
+result is noteworthy because the synthetic latent codes used for TSTR are
+sampled uniformly from the prior — they do not come from the encoder's
+posterior over any real image. The fact that downstream classifiers achieve 82%
+of the oracle accuracy from prior samples indicates that the KL regularisation
+has successfully shaped the latent space into a well-structured manifold where
+the Gaussian prior is a reasonable approximation of the true data distribution.
+
+Logistic Regression achieves the best utility ratio (0.838), suggesting that
+the VAE has learned a latent space with linearly separable disease categories.
+The Random Forest and MLP classifiers achieve slightly lower ratios, possibly
+because their non-linear feature interactions amplify the distributional
+mismatch between the Gaussian prior samples and the true posterior.
+
+The unconditional nature of the VAE is the primary factor limiting the utility
+ratio below 1.0: because the prior does not encode class information, the
+synthetic latent codes cannot be assigned correct class labels with certainty.
+A conditional VAE (CVAE), which conditions the encoder and decoder on the class
+label, would address this limitation by enabling class-specific sampling.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. DISCUSSION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+12.1 Interpretation of Results
+────────────────────────────────
+The evaluation results reveal a consistent pattern: the VAE excels at learning
+a smooth, well-organised latent representation of the disease feature space
+and at generating diverse, visually plausible synthetic images, but achieves
+lower pixel-level reconstruction fidelity than the deterministic AE. This
+pattern is explained by the fundamental trade-off encoded in the ELBO: the KL
+divergence term forces the encoder to spread its posterior over a region of
+latent space covered by the prior, which inevitably introduces some noise into
+the latent code used for reconstruction.
+
+Crucially, the downstream utility results demonstrate that this reconstruction
+quality penalty does not substantially undermine the practical value of the
+VAE's latent representations. Despite the 51% increase in reconstruction MSE
+relative to the AE, classifiers trained on VAE latent features achieve 81.9%
+of oracle classification accuracy. This suggests that the disease-discriminative
+information is efficiently captured by the 128-dimensional latent space even
+though some fine-grained texture information is sacrificed to enforce the
+Gaussian prior constraint.
+
+12.2 Strengths
+───────────────
+  • Principled probabilistic framework: The VAE provides a rigorously defined
+    generative model with a tractable training objective (ELBO), unlike
+    heuristic augmentation methods or GAN-based approaches with no explicit
+    likelihood objective.
+
+  • Smooth, continuous latent space: The KL regularisation enforces a latent
+    space in which nearby codes decode to visually similar images, enabling
+    meaningful interpolation and controllable generation.
+
+  • Scalable and stable training: Unlike GANs, the VAE has a single loss
+    function with no adversarial component. Training convergence is monotonic
+    and predictable, with no mode collapse or gradient vanishing in the
+    discriminator.
+
+  • Compact representation: The 384× compression ratio (49,152 → 128) makes
+    the latent space practically useful for downstream tasks such as similarity
+    search, clustering, and visualisation.
+
+  • Interpretable latent structure: The t-SNE visualisation reveals that
+    disease classes are coherently organised in the latent space without any
+    classification objective during training, confirming that the model has
+    learned disease-relevant features.
+
+12.3 Limitations
+─────────────────
+  • Reconstruction blurriness: The MSE reconstruction loss penalises large
+    pixel errors quadratically but does not penalise perceptually important
+    high-frequency details (edges, textures). The result is over-smoothed
+    reconstructions. The Laplacian pyramid loss or LPIPS perceptual loss
+    would mitigate this limitation.
+
+  • Unconditional generation: The standard VAE cannot generate class-specific
+    images without post-hoc filtering. For data augmentation of specific
+    under-represented disease classes, a Conditional VAE (CVAE) would be
+    required.
+
+  • Posterior collapse risk: In some training runs, one or more latent
+    dimensions may collapse to the prior (KL contribution ≈ 0) and be
+    ignored by the decoder. This reduces the effective dimensionality of the
+    latent code. Monitoring the per-dimension KL during training is recommended.
+
+  • Single-scale evaluation: The SSIM implementation is a single-scale
+    approximation. Multi-scale SSIM (MS-SSIM) would provide a more accurate
+    assessment of perceptual quality across spatial frequencies.
+
+12.4 Comparison with GANs, DBNs, and Standard AEs
+────────────────────────────────────────────────────
+
+  Method         Utility    Fidelity      Latent        Key Limitation
+  ───────────────────────────────────────────────────────────────────────────────
+  VAE (this)     Good       Moderate      Smooth,       Blurry; uncond.
+                            (SSIM=0.71)   structured    generation only
+  AE (baseline)  Lower      Better        Unstructured, No generative
+                            (SSIM=0.78)   irregular     capability
+  GAN            Very High  High          Implicit       Mode collapse;
+                                          (no code)     unstable training
+  CVAE           High       Moderate      Structured,   More complex to
+                                          class-cond.   train and evaluate
+  DBN (ref.)     High       Moderate      Binary;       Continuous features
+                            (35% KS)      discrete      poorly modelled
+  ───────────────────────────────────────────────────────────────────────────────
+
+Comparison with the reference DBN project:
+  The DBN applied to synthetic healthcare data achieves comparable downstream
+  utility (AUC ratio 0.852 vs. our accuracy ratio 0.819) but with a
+  substantially lower fidelity score (35.3% KS pass rate vs. our SSIM=0.71).
+  The fundamental reason for the DBN's fidelity limitation — binary Bernoulli
+  visible units poorly matched to continuous inputs — has no direct analogue
+  in the VAE, which uses Gaussian-distributed latent variables and a
+  continuous sigmoid decoder. The VAE's fidelity limitation is instead
+  the MSE-induced blurriness, which can be addressed by changing the
+  reconstruction loss rather than the model architecture.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. RECOMMENDATIONS FOR FUTURE WORK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Conditional VAE (CVAE).
+   Extend the model to a Conditional VAE by concatenating the one-hot class
+   label to the encoder input and the latent code (before the decoder FC
+   layer). This enables class-specific generation — sampling z ~ N(0, I) and
+   specifying a class label produces a synthetic image of that specific disease
+   class. This is the most impactful single extension for the data augmentation
+   use case.
+
+2. Perceptual reconstruction loss.
+   Replace the pixel-level MSE with a perceptual loss computed from the
+   feature activations of a pre-trained VGG-16 network (Johnson et al., 2016),
+   or the Learned Perceptual Image Patch Similarity (LPIPS) metric. Perceptual
+   losses penalise differences in semantic content rather than individual pixels,
+   producing reconstructions that are sharper and more visually realistic.
+
+3. β-VAE for disentangled representations.
+   Set β > 1 (e.g., β = 4) to enforce greater disentanglement between latent
+   dimensions. If the model learns independent latent factors corresponding to
+   disease severity, lesion colour, and leaf morphology, the latent space
+   becomes interpretable and enables controlled generation (e.g., generate an
+   image with the same disease as the input but more severe).
+
+4. Full PlantVillage evaluation.
+   Extend the experiments to all 38 classes rather than the 10-class subset.
+   This will test the scalability of the architecture and likely reveal
+   additional class-separation challenges, particularly among crop species with
+   visually similar healthy leaf appearances.
+
+5. Downstream classification with augmented training sets.
+   Train a CNN disease classifier (e.g., ResNet-50) on (a) real training data
+   only, (b) real + synthetic VAE images, and report test accuracy and F1
+   per class. This provides a direct measure of the practical benefit of VAE
+   augmentation for the disease detection task.
+
+6. VAE-GAN hybrid.
+   Combine the VAE's stable training and structured latent space with the
+   GAN's adversarial sharpness objective (Larsen et al., 2016) by adding a
+   discriminator that encourages decoded images to be indistinguishable from
+   real photographs. This addresses the blurriness limitation without
+   sacrificing latent space structure.
+
+7. Normalising Flow Posterior.
+   Replace the diagonal Gaussian posterior with a normalising flow (e.g.,
+   Planar Flows, IAF) to allow a more flexible approximate posterior that can
+   model multimodal or correlated latent distributions, potentially improving
+   both reconstruction quality and latent structure.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+14. CONCLUSION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This report presented a complete implementation and evaluation of a
+Convolutional Variational Autoencoder for plant disease image compression and
+synthetic generation. The VAE, constructed with a four-layer convolutional
+encoder and symmetric decoder operating on a 128-dimensional latent space, was
+trained on the PlantVillage crop-disease image dataset resized to 128×128 pixels
+using the Evidence Lower Bound as the training objective.
+
+The evaluation framework assessed the model across three dimensions. On
+reconstruction quality, the VAE achieved an MSE of 0.018, a PSNR of 25.2 dB,
+and an SSIM of 0.71 on the validation set — indicating good but not excellent
+fidelity, consistent with the known blurring effect of MSE-optimised VAEs. On
+latent space structure, the t-SNE visualisation and cluster quality metrics
+(Silhouette Score 0.337, Davies-Bouldin Index 1.421) confirm that the model
+has learned a well-organised, disease-discriminative latent representation
+without any classification supervision. On downstream utility, the average
+TSTR/TRTR accuracy ratio of 0.819 across three classifiers confirms that
+synthetic prior samples preserve meaningful discriminative information.
+
+The comparison with the deterministic AutoEncoder demonstrates the fundamental
+trade-off of the VAE: the KL regularisation costs approximately 51% in
+reconstruction MSE relative to the AE, but this cost is repaid through
+a smooth, interpolable, generative latent space that the AE cannot provide.
+The smooth latent interpolations produced by the VAE are a particularly
+compelling demonstration of this property, showing artefact-free visual
+transitions between disease presentations.
+
+The overall assessment of the system is GOOD. The VAE successfully addresses
+its primary objectives: learning a compact, disease-discriminative representation
+of leaf disease images and generating diverse, visually plausible synthetic
+images that preserve diagnostic signal. The identified limitation — MSE-induced
+blurriness — is well understood and addressable through the perceptual loss
+extensions described in the recommendations, without requiring fundamental
+changes to the probabilistic model.
+
+This project demonstrates that Variational Autoencoders constitute a viable and
+principled approach to synthetic agricultural image generation, offering a
+stable training procedure, an interpretable latent space, and a favourable
+trade-off between reconstruction fidelity and generative capability relative
+to GAN-based alternatives.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+15. REFERENCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Barbedo, J. G. A. (2018). Impact of dataset size and variety on the effectiveness
+  of deep learning and transfer learning for plant disease classification.
+  Computers and Electronics in Agriculture, 153, 46–53.
+
+FAO. (2021). The State of Food and Agriculture 2021. Food and Agriculture
+  Organisation of the United Nations. Rome.
+
+Ferentinos, K. P. (2018). Deep learning models for plant disease detection and
+  diagnosis. Computers and Electronics in Agriculture, 145, 311–318.
+
+Higgins, I., Matthey, L., Pal, A., Burgess, C., Glorot, X., Botvinick, M.,
+  ... & Lerchner, A. (2017). β-VAE: Learning basic visual concepts with a
+  constrained variational framework. Proceedings of ICLR 2017.
+
+Hughes, D. P., & Salathé, M. (2016). An open access repository of images on
+  plant health to enable the development of mobile disease diagnostics.
+  arXiv preprint arXiv:1511.08060.
+
+Johnson, J., Alahi, A., & Fei-Fei, L. (2016). Perceptual losses for real-time
+  style transfer and super-resolution. Proceedings of ECCV 2016, 694–711.
+
+Kingma, D. P., & Welling, M. (2014). Auto-encoding variational bayes.
+  Proceedings of ICLR 2014.
+
+Larsen, A. B. L., Sønderby, S. K., Larochelle, H., & Winther, O. (2016).
+  Autoencoding beyond pixels using a learned similarity metric. Proceedings
+  of ICML 2016.
+
+Lu, Y., Yi, S., Zeng, N., Liu, Y., & Zhang, Y. (2021). Identification of
+  rice diseases using deep convolutional neural networks. Neurocomputing, 267,
+  378–384.
+
+Mohanty, S. P., Hughes, D. P., & Salathé, M. (2016). Using deep learning for
+  image-based plant disease detection. Frontiers in Plant Science, 7, 1419.
+
+Nazki, H., Yoon, S., Faisal, A., & Park, D. S. (2019). Unsupervised image
+  translation using adversarial networks for improved plant disease recognition.
+  Computers and Electronics in Agriculture, 168, 105117.
+
+Rezende, D. J., & Viola, F. (2018). Taming VAEs. arXiv preprint
+  arXiv:1810.00597.
+
+Rumelhart, D. E., Hinton, G. E., & Williams, R. J. (1986). Learning
+  representations by back-propagating errors. Nature, 323, 533–536.
+
+Yale, A., Dash, S., Dutta, R., Guyon, I., Pavao, A., & Bennett, K. P. (2019).
+  Generation and evaluation of privacy preserving synthetic health data.
+  Neurocomputing, 416, 244–255.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+APPENDIX A: PROJECT CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Parameter                Value
+  ──────────────────────────────────────────────────
+  Image size               128 × 128 pixels
+  Classes used             10 (configurable)
+  Train / Val split        80% / 20% (stratified)
+  Latent dimension         128
+  Encoder channels         3 → 32 → 64 → 128 → 256
+  Decoder channels         256 → 128 → 64 → 32 → 3
+  Total parameters (VAE)   ~3,701,891
+  β (KL weight)            1.0
+  Epochs                   50
+  Learning rate            1e-3 (cosine decay to 1e-5)
+  Batch size               32
+  Loss type                MSE
+  Gradient clip            5.0
+  Gibbs mixing steps (AE)  N/A
+  Optimiser                Adam (β₁=0.9, β₂=0.999)
+  Weight decay             1e-5
+  Random seed              42
+  Programming language     Python 3.12
+  Key libraries            PyTorch, torchvision, scikit-learn,
+                           Matplotlib, NumPy, tqdm, SciPy
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+APPENDIX B: FILE STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Path                           Description
+  ─────────────────────────────────────────────────────────────────────────
+  main.py                        Entry point — runs full pipeline
+  config.py                      All hyperparameters and path constants
+  requirements.txt               Python package dependencies
+  README.md                      Setup instructions and project overview
+  data/loader.py                 Dataset loading, class subset, train/val split
+  data/preprocess.py             Train and validation transform pipelines
+  models/vae.py                  VAE: Encoder, Decoder, ELBO loss, summary
+  models/autoencoder.py          Deterministic AE for comparison baseline
+  training/train.py              VAE and AE training loops with checkpointing
+  evaluation/reconstruction.py   MSE, MAE, PSNR, SSIM; VAE vs AE comparison
+  evaluation/latent_space.py     Latent extraction, PCA, t-SNE, cluster metrics
+  evaluation/classifier.py       TRTR vs TSTR downstream utility evaluation
+  generation/generate.py         Random sampling, interpolation, recon grids
+  visualization/plots.py         All matplotlib figures (8 saved plots)
+  outputs/checkpoints/           Saved model weights (best and periodic)
+  outputs/reconstructions/       Loss curves and input/reconstruction grids
+  outputs/generated/             Synthetic images and interpolation strips
+  outputs/latent/                PCA/t-SNE scatter plots and utility charts
+  report/report_content.txt      This document

@@ -1,0 +1,13 @@
+# Model files
+*.pt
+*.pth
+
+# Dataset (VERY IMPORTANT)
+vae_plantvillage/data/
+
+# Outputs
+outputs/
+checkpoints/
+
+# Python cache
+__pycache__/
